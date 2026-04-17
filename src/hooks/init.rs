@@ -1430,6 +1430,53 @@ fn run_antigravity_mode_at(base_dir: &Path, verbose: u8) -> Result<()> {
     Ok(())
 }
 
+// ─── Hermes Agent support ────────────────────────────────────
+
+const HERMES_PLUGIN_INIT: &str = include_str!("../../hooks/hermes/__init__.py");
+const HERMES_PLUGIN_YAML: &str = include_str!("../../hooks/hermes/plugin.yaml");
+
+pub fn run_hermes_mode(verbose: u8) -> Result<()> {
+    // Hermes plugins live at ~/.hermes/plugins/<name>/
+    let hermes_home = dirs::home_dir()
+        .context("Failed to find home directory")?
+        .join(".hermes");
+    let plugin_dir = hermes_home.join("plugins").join("rtk-rewrite");
+
+    if plugin_dir.exists() {
+        // Check if already has RTK
+        let init_file = plugin_dir.join("__init__.py");
+        if init_file.exists() {
+            if let Ok(content) = fs::read_to_string(&init_file) {
+                if content.contains("RTK") || content.contains("rtk rewrite") {
+                    println!("\nRTK already configured for Hermes.");
+                    println!("  Plugin: ~/.hermes/plugins/rtk-rewrite/ (already present)");
+                    println!("  Restart Hermes gateway to use the plugin.\n");
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    // Create plugin directory
+    fs::create_dir_all(&plugin_dir)
+        .with_context(|| format!("Failed to create {}", plugin_dir.display()))?;
+
+    // Write __init__.py
+    let init_path = plugin_dir.join("__init__.py");
+    write_if_changed(&init_path, HERMES_PLUGIN_INIT, "hermes plugin __init__.py", verbose)?;
+
+    // Write plugin.yaml
+    let yaml_path = plugin_dir.join("plugin.yaml");
+    write_if_changed(&yaml_path, HERMES_PLUGIN_YAML, "hermes plugin plugin.yaml", verbose)?;
+
+    println!("\nRTK configured for Hermes Agent.");
+    println!("  Plugin: {} (installed)", plugin_dir.display());
+    println!("  Hermes will now use rtk commands for token savings.");
+    println!("  Restart Hermes gateway. Test with: git status\n");
+
+    Ok(())
+}
+
 fn run_codex_mode(global: bool, verbose: u8) -> Result<()> {
     let (agents_md_path, rtk_md_path) = if global {
         let codex_dir = resolve_codex_dir()?;
